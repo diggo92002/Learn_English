@@ -1,198 +1,142 @@
-const vocabularyStoreKey = 'speak-easy-vocabulary-v1';
-const refreshInterval = 7 * 24 * 60 * 60 * 1000;
-const retryInterval = 24 * 60 * 60 * 1000;
-const vocabularyTopics = {
-  airport: { trigger: 'airport', topic: 'travel,flight' },
-  restaurant: { trigger: 'restaurant', topic: 'food,dining' },
-  work: { trigger: 'office', topic: 'work,business' }
+// Online suggestions stay within the five sentences currently on screen.
+const onlineLessonKey = 'speak-easy-lesson-vocabulary-v2';
+const updateAfter = 7 * 24 * 60 * 60 * 1000;
+const retryAfter = 24 * 60 * 60 * 1000;
+const lessonTopics = {
+  airport: ['airport', 'travel,flight'],
+  restaurant: ['restaurant', 'food,dining'],
+  work: ['office', 'work,business']
 };
-const localVocabulary = {
-  airport: [
-    ['boarding pass', '登機證', 'n.'], ['passport', '護照', 'n.'], ['gate', '登機門', 'n.'], ['luggage', '行李', 'n.'],
-    ['terminal', '航廈', 'n.'], ['security', '安檢', 'n.'], ['departure', '出發', 'n.'], ['arrival', '抵達', 'n.'],
-    ['customs', '海關', 'n.'], ['transfer', '轉機', 'n.'], ['carousel', '行李轉盤', 'n.'], ['delay', '延誤', 'n.']
-  ],
-  restaurant: [
-    ['menu', '菜單', 'n.'], ['order', '點餐；訂單', 'v./n.'], ['recommend', '推薦', 'v.'], ['bill', '帳單', 'n.'],
-    ['reservation', '訂位', 'n.'], ['portion', '份量', 'n.'], ['vegetarian', '素食的', 'adj.'], ['allergy', '過敏', 'n.'],
-    ['dessert', '甜點', 'n.'], ['receipt', '收據', 'n.'], ['refill', '續杯', 'n.'], ['takeaway', '外帶', 'n.']
-  ],
-  work: [
-    ['meeting', '會議', 'n.'], ['deadline', '截止日期', 'n.'], ['update', '更新；進度', 'v./n.'], ['feedback', '回饋', 'n.'],
-    ['agenda', '議程', 'n.'], ['proposal', '提案', 'n.'], ['timeline', '時程', 'n.'], ['priority', '優先事項', 'n.'],
-    ['budget', '預算', 'n.'], ['client', '客戶', 'n.'], ['review', '審閱', 'v.'], ['handover', '交接', 'n.']
-  ]
-};
+let onlineLessonStore;
+try { onlineLessonStore = JSON.parse(localStorage.getItem(onlineLessonKey) || '{}') || {}; }
+catch { onlineLessonStore = {}; }
+if (!onlineLessonStore.records) onlineLessonStore.records = {};
+if (!Array.isArray(onlineLessonStore.history)) onlineLessonStore.history = [];
+const loadingLessons = new Set();
 
-function readVocabularyStore() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(vocabularyStoreKey) || '{}');
-    return { scenes: parsed.scenes || {}, history: Array.isArray(parsed.history) ? parsed.history : [], rotation: parsed.rotation || {} };
-  } catch { return { scenes: {}, history: [], rotation: {} }; }
+function lessonCacheKey(scene, page) { return `${scene.id}:${page}`; }
+function saveOnlineLessons() {
+  try { localStorage.setItem(onlineLessonKey, JSON.stringify(onlineLessonStore)); }
+  catch { showToast('無法儲存網路單字，請檢查瀏覽器儲存設定。'); }
 }
-const vocabularyStore = readVocabularyStore();
-const refreshingScenes = new Set();
-
-function saveVocabularyStore() {
-  try { localStorage.setItem(vocabularyStoreKey, JSON.stringify(vocabularyStore)); }
-  catch { showToast('無法儲存單字更新紀錄。'); }
-}
-function validWord(word) {
-  return word && typeof word.id === 'string' && typeof word.en === 'string' && typeof word.zh === 'string' && typeof word.type === 'string';
-}
-function registerVocabularyWord(word) {
-  if (!validWord(word) || wordById.has(word.id)) return;
+function registerOnlineWord(word) {
+  if (!word || typeof word.id !== 'string' || typeof word.en !== 'string' || typeof word.zh !== 'string') return;
+  if (!wordById.has(word.id)) allWords.push(word);
   wordById.set(word.id, word);
-  allWords.push(word);
 }
-function rememberVocabulary(words) {
-  words.forEach(word => {
-    registerVocabularyWord(word);
-    if (!vocabularyStore.history.some(entry => entry.id === word.id)) vocabularyStore.history.push(word);
-  });
-  saveVocabularyStore();
+function currentLessonSentences(scene, page) {
+  return scene.sentences.slice(page * pageSize, (page + 1) * pageSize);
 }
-function applyVocabulary(scene, words) {
-  scene.words = words;
-  if (currentScene.id === scene.id) { renderWords(); newQuestion(); }
-  renderReview(); renderProgress();
+function appearsInLesson(word, sentences) {
+  const escaped = word.en.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(^|[^A-Za-z])${escaped}(?=[^A-Za-z]|$)`, 'i');
+  return sentences.some(sentence => pattern.test(sentence.en));
 }
-function localGroup(scene, group) {
-  const list = localVocabulary[scene.id];
-  return list.slice(group * 4, group * 4 + 4).map(([en, zh, type]) => ({
-    id: `local-${scene.id}-${en.replace(/\s+/g, '-')}`, en, zh, type
-  }));
+function validLessonWords(words, scene, page) {
+  return Array.isArray(words) && words.length === 6 && words.every(word =>
+    word && typeof word.en === 'string' && typeof word.zh === 'string' && appearsInLesson(word, currentLessonSentences(scene, page))
+  );
 }
-function rotateVocabulary(scene, announce = true) {
-  const count = localVocabulary[scene.id].length / 4;
-  const next = ((Number(vocabularyStore.rotation[scene.id]) || 0) + 1) % count;
-  vocabularyStore.rotation[scene.id] = next;
-  const words = localGroup(scene, next);
-  rememberVocabulary(words);
-  applyVocabulary(scene, words);
-  if (currentScene.id === scene.id) $('#vocabularyStatus').textContent = `本機單字・第 ${next + 1} / ${count} 組`;
-  if (announce) showToast('已換一組核心單字');
-}
-function showVocabularyStatus() {
-  const record = vocabularyStore.scenes[currentScene.id];
+function showLessonVocabulary() {
+  const scene = currentScene;
+  const page = sentencePages[scene.id];
+  const key = lessonCacheKey(scene, page);
+  const record = onlineLessonStore.records[key];
+  scene.words = record && validLessonWords(record.words, scene, page) ? record.words : lessonWords[scene.id][page];
+  scene.words.forEach(registerOnlineWord);
+  renderWords(); renderReview(); newQuestion();
   const status = $('#vocabularyStatus');
-  if (record && currentScene.words === record.words) {
-    status.textContent = `網路單字・${new Date(record.updatedAt).toLocaleDateString('zh-TW')} 更新`;
-  } else if (currentScene.words.some(word => word.id.startsWith('online-'))) {
-    status.textContent = '網路單字・已儲存於本機';
-  } else {
-    status.textContent = `本機單字・第 ${(Number(vocabularyStore.rotation[currentScene.id]) || 0) + 1} / 3 組`;
-  }
+  status.textContent = loadingLessons.has(key) ? '正在網路更新本組單字…' :
+    record && scene.words === record.words ? `本組 6 字・網路更新於 ${new Date(record.updatedAt).toLocaleDateString('zh-TW')}` :
+    '本組 6 個核心單字，均取自下方 5 句';
+  $('#refreshVocabulary').disabled = loadingLessons.has(key);
+  if (!record || Date.now() - (record.updatedAt || 0) > updateAfter) refreshLessonVocabulary(false);
 }
-function normalizeOnlineTerm(value) {
-  return typeof value === 'string' ? value.toLowerCase().trim().replace(/\s+/g, ' ') : '';
-}
-function candidateWords(data, scene) {
-  const usedInExamples = new Set(scene.sentences.flatMap(sentence => (sentence.en.toLowerCase().match(/[a-z]+/g) || [])));
-  const existing = new Set(scene.words.map(word => word.en.toLowerCase()));
-  const seen = new Set();
-  return data.filter(item => {
-    const en = normalizeOnlineTerm(item.word);
-    if (!/^[a-z]+(?: [a-z]+)?$/.test(en) || en.length < 4 || en.length > 20 || seen.has(en) || existing.has(en)) return false;
-    const parts = en.split(' ');
-    if (!parts.every(part => usedInExamples.has(part))) return false;
-    seen.add(en); return true;
-  });
-}
-function partOfSpeech(tags) {
-  if (!Array.isArray(tags)) return 'word';
-  const parts = ['n', 'v', 'adj', 'adv'].filter(tag => tags.includes(tag));
-  return parts.length ? parts.map(tag => `${tag}.`).join('/') : 'word';
-}
-async function fetchJson(url, timeout = 9000) {
+async function fetchLessonJson(url) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
+  const timeout = setTimeout(() => controller.abort(), 8000);
   try {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return await response.json();
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timeout); }
 }
-async function translateWord(en) {
+async function translateLessonWord(en) {
   const url = new URL('https://api.mymemory.translated.net/get');
   url.searchParams.set('q', en);
   url.searchParams.set('langpair', 'en|zh-TW');
-  const data = await fetchJson(url);
-  const translation = String(data.responseData?.translatedText || '').trim();
-  if (Number(data.responseStatus) !== 200 || !/[\u3400-\u9fff]/.test(translation) || translation.length > 24) throw new Error('Invalid translation');
-  return translation;
+  const data = await fetchLessonJson(url);
+  const zh = String(data.responseData?.translatedText || '').trim();
+  if (Number(data.responseStatus) !== 200 || !/[\u3400-\u9fff]/.test(zh) || zh.length > 24) throw new Error('No useful translation');
+  return zh;
 }
-async function refreshVocabulary(scene, manual = false) {
-  if (refreshingScenes.has(scene.id)) return;
-  const record = vocabularyStore.scenes[scene.id];
-  if (!manual && record && Date.now() - record.updatedAt < refreshInterval) return;
-  if (!manual && record && Date.now() - (record.lastAttempt || 0) < retryInterval) return;
-  refreshingScenes.add(scene.id);
-  $('#refreshVocabulary').disabled = refreshingScenes.has(currentScene.id);
-  if (currentScene.id === scene.id) $('#vocabularyStatus').textContent = '正在從網路更新單字…';
+async function refreshLessonVocabulary(manual) {
+  const scene = currentScene;
+  const page = sentencePages[scene.id];
+  const key = lessonCacheKey(scene, page);
+  const prior = onlineLessonStore.records[key];
+  if (loadingLessons.has(key)) return;
+  if (!manual && prior && Date.now() - (prior.lastAttempt || prior.updatedAt || 0) < retryAfter) return;
+  loadingLessons.add(key);
+  showLessonStatus(key, '正在網路更新本組單字…');
   try {
-    const topic = vocabularyTopics[scene.id];
+    const [trigger, topic] = lessonTopics[scene.id];
     const url = new URL('https://api.datamuse.com/words');
-    url.searchParams.set('rel_trg', topic.trigger);
-    url.searchParams.set('topics', topic.topic);
-    url.searchParams.set('md', 'p');
+    url.searchParams.set('rel_trg', trigger);
+    url.searchParams.set('topics', topic);
     url.searchParams.set('max', '100');
-    const data = await fetchJson(url);
-    if (!Array.isArray(data)) throw new Error('Invalid vocabulary data');
-    const candidates = candidateWords(data, scene);
-    const words = [];
-    for (const item of candidates.slice(0, 15)) {
+    const suggestions = await fetchLessonJson(url);
+    if (!Array.isArray(suggestions)) throw new Error('Unexpected word list');
+    const sentences = currentLessonSentences(scene, page);
+    const base = lessonWords[scene.id][page];
+    const baseTerms = new Set(base.map(word => word.en.toLowerCase()));
+    const alternatives = suggestions.map(item => String(item.word || '').toLowerCase().trim())
+      .filter((en, index, list) => /^[a-z]{4,18}$/.test(en) && list.indexOf(en) === index && !baseTerms.has(en))
+      .filter(en => appearsInLesson({ en }, sentences)).slice(0, 4);
+    const selected = [];
+    for (const en of alternatives) {
       try {
-        const en = normalizeOnlineTerm(item.word);
-        const zh = await translateWord(en);
-        words.push({ id: `online-${scene.id}-${en.replace(/\s+/g, '-')}`, en, zh, type: partOfSpeech(item.tags) });
-        if (words.length === 4) break;
-      } catch { /* try the next related word */ }
+        const known = [...wordById.values()].find(word => word.en.toLowerCase() === en);
+        const zh = known?.zh || await translateLessonWord(en);
+        selected.push({ id: `online-${scene.id}-${en}`, en, zh, type: 'word' });
+        if (selected.length === 3) break;
+      } catch { /* try another suggestion */ }
     }
-    if (words.length !== 4) throw new Error('Not enough translated words');
-    rememberVocabulary(words);
-    vocabularyStore.scenes[scene.id] = { words, updatedAt: Date.now(), lastAttempt: Date.now() };
-    saveVocabularyStore();
-    applyVocabulary(scene, words);
-    if (currentScene.id === scene.id) showVocabularyStatus();
-    if (manual) showToast('已從網路取得新的核心單字');
-  } catch {
-    if (record) { record.lastAttempt = Date.now(); saveVocabularyStore(); }
-    if (currentScene.id === scene.id) { showVocabularyStatus(); if (manual) showToast('網路更新失敗，仍可使用目前的單字。'); }
-  } finally {
-    refreshingScenes.delete(scene.id);
-    $('#refreshVocabulary').disabled = refreshingScenes.has(currentScene.id);
-  }
-}
-
-// Restore saved words before showing the review list, so old unknown words remain available.
-vocabularyStore.history.filter(validWord).forEach(registerVocabularyWord);
-for (const scene of scenes) {
-  const record = vocabularyStore.scenes[scene.id];
-  if (record && Array.isArray(record.words) && record.words.length === 4 && record.words.every(validWord)) {
-    record.words.forEach(registerVocabularyWord);
-    scene.words = record.words;
-  } else {
-    const group = ((Number(vocabularyStore.rotation[scene.id]) || 0) + 1) % 3;
-    vocabularyStore.rotation[scene.id] = group;
-    const words = localGroup(scene, group);
-    words.forEach(registerVocabularyWord);
-    scene.words = words;
-    words.forEach(word => {
-      if (!vocabularyStore.history.some(entry => entry.id === word.id)) vocabularyStore.history.push(word);
+    const words = [...selected, ...base.filter(word => !selected.some(item => item.en === word.en.toLowerCase()))].slice(0, 6);
+    if (!validLessonWords(words, scene, page)) throw new Error('Incomplete lesson words');
+    words.forEach(registerOnlineWord);
+    selected.forEach(word => {
+      if (!onlineLessonStore.history.some(saved => saved.id === word.id)) onlineLessonStore.history.push(word);
     });
+    onlineLessonStore.records[key] = { words, updatedAt: Date.now(), lastAttempt: Date.now() };
+    saveOnlineLessons();
+    if (currentScene.id === scene.id && sentencePages[scene.id] === page) {
+      scene.words = words; renderWords(); renderReview(); newQuestion();
+      showLessonStatus(key, `本組 6 字・網路更新於 ${new Date().toLocaleDateString('zh-TW')}`);
+      if (manual) showToast('已更新本組核心單字');
+    }
+  } catch {
+    if (prior) { prior.lastAttempt = Date.now(); saveOnlineLessons(); }
+    if (currentScene.id === scene.id && sentencePages[scene.id] === page) {
+      showLessonStatus(key, '本組 6 個核心單字，均取自下方 5 句');
+      if (manual) showToast('網路更新失敗，仍可練習目前的單字。');
+    }
+  } finally {
+    loadingLessons.delete(key);
+    $('#refreshVocabulary').disabled = loadingLessons.has(lessonCacheKey(currentScene, sentencePages[currentScene.id]));
   }
 }
-saveVocabularyStore();
-renderWords(); renderReview(); renderProgress(); newQuestion(); showVocabularyStatus();
+function showLessonStatus(key, value) {
+  if (key !== lessonCacheKey(currentScene, sentencePages[currentScene.id])) return;
+  $('#vocabularyStatus').textContent = value;
+  $('#refreshVocabulary').disabled = loadingLessons.has(key);
+}
 
-$('#rotateVocabulary').addEventListener('click', () => rotateVocabulary(currentScene));
-$('#refreshVocabulary').addEventListener('click', () => refreshVocabulary(currentScene, true));
-$('#sceneTabs').addEventListener('click', event => {
-  if (event.target.closest('.scene-tab')) {
-    showVocabularyStatus();
-    $('#refreshVocabulary').disabled = refreshingScenes.has(currentScene.id);
-    refreshVocabulary(currentScene);
-  }
+onlineLessonStore.history.forEach(registerOnlineWord);
+Object.values(onlineLessonStore.records).forEach(record => {
+  if (record && Array.isArray(record.words)) record.words.forEach(registerOnlineWord);
 });
-refreshVocabulary(currentScene);
+$('#rotateVocabulary').addEventListener('click', () => setSentencePage(sentencePages[currentScene.id] + 1));
+$('#refreshVocabulary').addEventListener('click', () => refreshLessonVocabulary(true));
+document.addEventListener('lessonchange', showLessonVocabulary);
+showLessonVocabulary();

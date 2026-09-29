@@ -4,10 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f7f5ef">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Speak Easy">
   <title>Speak Easy｜情境英文練習</title>
   <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
   <script src="examples.js" defer></script>
+  <script src="lesson-words.js" defer></script>
   <script src="app.js" defer></script>
   <script src="online-vocabulary.js" defer></script>
 </head>
@@ -24,31 +29,16 @@
     </header>
 
     <main>
-      <section class="hero" aria-labelledby="heroTitle">
-        <div class="hero-copy">
-          <p class="eyebrow">YOUR EVERYDAY ENGLISH COMPANION</p>
-          <h1 id="heroTitle">把英文，<br><em>說進生活裡。</em></h1>
-          <p class="hero-description">從真實情境開始，先聽、再跟讀。每天認識幾個常用字，慢慢練出開口的自信。</p>
-          <a href="#learn" class="primary-link">開始今天的練習 <span aria-hidden="true">↗</span></a>
-        </div>
-        <div class="hero-art" aria-hidden="true">
-          <div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div>
-          <div class="art-card art-card-back"><span>hello</span><span class="tiny-wave">〰</span></div>
-          <div class="art-card art-card-front"><span class="art-card-label">TODAY'S PHRASE</span><strong>Nice to meet you.</strong><span>很高興認識你。</span><div class="art-sound">♫</div></div>
-          <span class="art-star star-one">✳</span><span class="art-star star-two">✦</span>
-        </div>
-      </section>
-
       <section id="learn" class="learning-section" aria-labelledby="learningTitle">
-        <div class="section-heading"><div><p class="eyebrow">01 / LEARN IN CONTEXT</p><h2 id="learningTitle">選一個情境，開始練習</h2><p>每個情境只挑 4 個核心單字，搭配你真的用得上的句子。</p></div><span class="heading-decor" aria-hidden="true">✳</span></div>
+        <div class="section-heading"><div><p class="eyebrow">01 / LEARN IN CONTEXT</p><h2 id="learningTitle">選一個情境，開始練習</h2><p>每組 5 句範例，先認識其中 6 個實用單字，再聽句子跟著說。</p></div><span class="heading-decor" aria-hidden="true">✳</span></div>
         <div id="sceneTabs" class="scene-tabs" role="tablist" aria-label="選擇英文情境"></div>
         <div class="lesson-grid">
           <section class="lesson-main" aria-labelledby="sceneTitle">
             <div class="scene-intro"><div><span id="sceneCategory" class="scene-category"></span><h3 id="sceneTitle"></h3><p id="sceneDescription"></p></div><span id="sceneIcon" class="scene-icon" aria-hidden="true"></span></div>
-            <div class="subheading"><span class="step-number">01</span><div><h4>先認識核心單字</h4><p>點一下聽發音；不熟的字，先收進生字本。</p></div></div>
-            <div class="vocabulary-toolbar"><span id="vocabularyStatus" role="status">正在準備核心單字…</span><div><button id="rotateVocabulary" type="button">換一組</button><button id="refreshVocabulary" type="button">網路更新 ↗</button></div></div>
+            <div class="subheading"><span class="step-number">01</span><div><h4>先認識核心單字</h4><p>這 6 個單字都會出現在下面的 5 句裡；不熟的字可以收進生字本。</p></div></div>
+            <div class="vocabulary-toolbar"><span id="vocabularyStatus" role="status">本組核心單字</span><div><button id="rotateVocabulary" type="button">換一組句子</button><button id="refreshVocabulary" type="button">網路更新 ↗</button></div></div>
             <div id="vocabularyList" class="vocabulary-list"></div>
-            <div class="subheading sentence-heading"><span class="step-number">02</span><div><h4>聽一句，跟著說一句</h4><p>每個情境有 100 句範例；每次練習 10 句，先聽英文再翻開中文。</p></div></div>
+            <div class="subheading sentence-heading"><span class="step-number">02</span><div><h4>聽一句，跟著說一句</h4><p>每個情境有 50 句範例；每次練習 5 句，先聽英文再翻開中文。</p></div></div>
             <div id="sentenceList" class="sentence-list"></div>
             <div class="sentence-pager" aria-label="切換範例句組"><button id="previousSentences" type="button">← 上一組</button><span id="sentencePageStatus" role="status"></span><button id="randomSentences" type="button">隨機練習 ✦</button><button id="nextSentences" type="button">下一組 →</button></div>
           </section>
@@ -65,8 +55,8 @@
       </section>
 
       <section id="quiz" class="quiz-section" aria-labelledby="quizTitle">
-        <div class="section-heading"><div><p class="eyebrow">03 / QUICK CHECK</p><h2 id="quizTitle">用小測驗，記得更牢</h2><p>先練生字本裡的字；若還沒記錄生字，就從目前情境出題。</p></div></div>
-        <div class="quiz-panel"><div class="quiz-panel-top"><span id="quizMode" class="quiz-label"></span><button id="newQuestion" class="text-button" type="button">換一題 ↗</button></div><p id="quizPrompt" class="quiz-prompt"></p><div id="quizOptions" class="quiz-options"></div><form id="spellingForm" class="spelling-form" hidden><label for="spellingInput">輸入英文單字</label><div class="spelling-row"><input id="spellingInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="在這裡輸入答案"><button type="submit">確認答案</button></div></form><p id="quizFeedback" class="quiz-feedback" role="status" aria-live="polite"></p></div>
+        <div class="section-heading"><div><p class="eyebrow">03 / QUICK CHECK</p><h2 id="quizTitle">用小測驗，記得更牢</h2><p>從目前練習的 5 句中出題，看中文提示，填入英文句子缺少的字。</p></div></div>
+        <div class="quiz-panel"><div class="quiz-panel-top"><span id="quizMode" class="quiz-label">英文填空</span><button id="newQuestion" class="text-button" type="button">換一題 ↗</button></div><p id="quizPrompt" class="quiz-prompt"></p><p id="quizTranslation" class="quiz-translation"></p><form id="spellingForm" class="spelling-form"><label for="spellingInput">填入缺少的英文單字或片語</label><div class="spelling-row"><input id="spellingInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="在這裡輸入答案"><button type="submit">確認答案</button></div></form><p id="quizFeedback" class="quiz-feedback" role="status" aria-live="polite"></p></div>
       </section>
     </main>
     <footer><span>Speak Easy <span class="brand-dot">.</span></span><p>一點一滴，讓英文成為生活的一部分。</p><span>MADE FOR EVERYDAY LEARNING</span></footer>

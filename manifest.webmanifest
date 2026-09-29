@@ -1,0 +1,16 @@
+{
+  "name": "Speak Easy 情境英文練習",
+  "short_name": "Speak Easy",
+  "description": "聽、說、記單字的情境英文練習",
+  "lang": "zh-Hant",
+  "id": "./index.html",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f5ef",
+  "theme_color": "#244d3c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -1,44 +1,39 @@
 const scenes = [
   {
     id: 'airport', tab: '機場海關', icon: '✈️', category: 'TRAVEL / AIRPORT', title: '在機場，從容出發', description: '報到、找登機門，常用句先學起來。',
-    words: [
-      { id: 'boarding-pass', en: 'boarding pass', zh: '登機證', type: 'n.' },
-      { id: 'passport', en: 'passport', zh: '護照', type: 'n.' },
-      { id: 'gate', en: 'gate', zh: '登機門', type: 'n.' },
-      { id: 'luggage', en: 'luggage', zh: '行李', type: 'n.' }
-    ],
+    words: lessonWords.airport[0],
     sentences: exampleSets.airport
   },
   {
     id: 'restaurant', tab: '餐廳點餐', icon: '🍽️', category: 'DAILY LIFE / RESTAURANT', title: '在餐廳，輕鬆點餐', description: '從看菜單到結帳，練習自然表達。',
-    words: [
-      { id: 'menu', en: 'menu', zh: '菜單', type: 'n.' },
-      { id: 'order', en: 'order', zh: '點餐；訂單', type: 'v./n.' },
-      { id: 'recommend', en: 'recommend', zh: '推薦', type: 'v.' },
-      { id: 'bill', en: 'bill', zh: '帳單', type: 'n.' }
-    ],
+    words: lessonWords.restaurant[0],
     sentences: exampleSets.restaurant
   },
   {
     id: 'work', tab: '職場日常', icon: '💼', category: 'WORK / EVERYDAY', title: '在職場，自在溝通', description: '開會與協作時，一句一句建立信心。',
-    words: [
-      { id: 'meeting', en: 'meeting', zh: '會議', type: 'n.' },
-      { id: 'deadline', en: 'deadline', zh: '截止日期', type: 'n.' },
-      { id: 'update', en: 'update', zh: '更新；進度', type: 'v./n.' },
-      { id: 'feedback', en: 'feedback', zh: '回饋', type: 'n.' }
-    ],
+    words: lessonWords.work[0],
     sentences: exampleSets.work
   }
 ];
 
 const $ = (selector) => document.querySelector(selector);
-const allWords = scenes.flatMap(scene => scene.words);
+const legacyWords = [
+  ['boarding-pass', 'boarding pass', '登機證'], ['passport', 'passport', '護照'], ['gate', 'gate', '登機門'], ['luggage', 'luggage', '行李'],
+  ['menu', 'menu', '菜單'], ['order', 'order', '點餐；訂單'], ['recommend', 'recommend', '推薦'], ['bill', 'bill', '帳單'],
+  ['meeting', 'meeting', '會議'], ['deadline', 'deadline', '截止日期'], ['update', 'update', '更新；進度'], ['feedback', 'feedback', '回饋']
+].map(([id, en, zh]) => ({ id, en, zh, type: 'word' }));
+const allWords = [...Object.values(lessonWords).flat(2), ...legacyWords];
+try {
+  const previousVocabulary = JSON.parse(localStorage.getItem('speak-easy-vocabulary-v1') || '{}');
+  if (Array.isArray(previousVocabulary.history)) allWords.push(...previousVocabulary.history.filter(word => word && typeof word.id === 'string' && typeof word.en === 'string'));
+} catch { /* previous online words are optional */ }
 const wordById = new Map(allWords.map(word => [word.id, word]));
 const savedKey = 'speak-easy-unknown-v1';
 const pageKey = 'speak-easy-sentence-page-v1';
-const pageSize = 10;
+const pageSize = 5;
 let unknown = readUnknown();
 let sentencePages = readSentencePages();
+scenes.forEach(scene => { scene.words = lessonWords[scene.id][sentencePages[scene.id]]; });
 let currentScene = scenes[0];
 let currentQuestion = null;
 let recognition = null;
@@ -59,7 +54,9 @@ function setSentencePage(page) {
   const count = Math.ceil(currentScene.sentences.length / pageSize);
   sentencePages[currentScene.id] = (page + count) % count;
   try { localStorage.setItem(pageKey, JSON.stringify(sentencePages)); } catch { /* paging still works for this visit */ }
-  stopRecognition(); renderSentences();
+  currentScene.words = lessonWords[currentScene.id][sentencePages[currentScene.id]];
+  stopRecognition(); renderWords(); renderSentences(); newQuestion();
+  document.dispatchEvent(new Event('lessonchange'));
 }
 
 function readUnknown() {
@@ -101,7 +98,7 @@ function renderTabs() {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'scene-tab';
     button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', String(scene.id === currentScene.id));
     button.innerHTML = `<span class="tab-icon" aria-hidden="true">${scene.icon}</span><span>${scene.tab}</span>`;
-    button.addEventListener('click', () => { stopRecognition(); currentScene = scene; renderLesson(); newQuestion(); });
+    button.addEventListener('click', () => { stopRecognition(); currentScene = scene; renderLesson(); });
     box.append(button);
   });
 }
@@ -143,7 +140,8 @@ function renderSentences() {
 function renderLesson() {
   renderTabs(); $('#sceneCategory').textContent = currentScene.category; $('#sceneTitle').textContent = currentScene.title;
   $('#sceneDescription').textContent = currentScene.description; $('#sceneIcon').textContent = currentScene.icon;
-  renderWords(); renderSentences();
+  renderWords(); renderSentences(); newQuestion();
+  document.dispatchEvent(new Event('lessonchange'));
 }
 function renderReview() {
   const box = $('#reviewList'); box.replaceChildren();
@@ -167,7 +165,7 @@ function wordSimilarity(expected, actual) {
   const a = normalize(expected).split(' ').filter(Boolean), b = normalize(actual).split(' ').filter(Boolean);
   const dp = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
   for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
-  return Math.round(100 * dp[a.length][b.length] / Math.max(a.length, b.length, 1));
+  return Math.round(5 * dp[a.length][b.length] / Math.max(a.length, b.length, 1));
 }
 function stopRecognition() { if (recognition) { recognition.abort(); recognition = null; } }
 function practicePronunciation(expected, button, result) {
@@ -196,34 +194,26 @@ function practicePronunciation(expected, button, result) {
   current.onend = () => { if (recognition === current) recognition = null; button.textContent = '再練一次 ↗'; };
   try { current.start(); } catch { result.classList.add('needs-work'); result.textContent = '無法啟動麥克風，請確認瀏覽器權限。'; button.textContent = '練習發音 ↗'; recognition = null; }
 }
-function quizPool() { return [...unknown].map(id => wordById.get(id)).filter(Boolean).length ? [...unknown].map(id => wordById.get(id)).filter(Boolean) : currentScene.words; }
-function shuffle(items) { return [...items].sort(() => Math.random() - 0.5); }
+function escapeRegex(value) { return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function newQuestion() {
-  const pool = quizPool(); const word = pool[Math.floor(Math.random() * pool.length)];
-  const spelling = Math.random() < 0.5;
-  currentQuestion = { word, spelling, answered: false };
-  $('#quizMode').textContent = spelling ? '拼寫練習' : '選擇題';
-  $('#quizPrompt').textContent = spelling ? `「${word.zh}」的英文怎麼說？` : `「${word.en}」是什麼意思？`;
+  const page = sentencePages[currentScene.id];
+  const sentences = currentScene.sentences.slice(page * pageSize, (page + 1) * pageSize);
+  const candidates = sentences.flatMap(sentence => currentScene.words.flatMap(word => {
+    const pattern = new RegExp(`(^|[^A-Za-z])(${escapeRegex(word.en)})(?=[^A-Za-z]|$)`, 'i');
+    return pattern.test(sentence.en) ? [{ sentence, word, pattern }] : [];
+  }));
+  if (!candidates.length) return;
+  const choice = candidates[Math.floor(Math.random() * candidates.length)];
+  currentQuestion = { ...choice, answered: false };
+  $('#quizMode').textContent = `英文填空・${currentScene.tab} 第 ${page + 1} 組`;
+  $('#quizPrompt').textContent = choice.sentence.en.replace(choice.pattern, (_, prefix) => `${prefix}_____`);
+  $('#quizTranslation').textContent = choice.sentence.zh;
   $('#quizFeedback').textContent = ''; $('#quizFeedback').classList.remove('wrong');
-  $('#spellingForm').hidden = !spelling; $('#quizOptions').hidden = spelling;
   $('#spellingInput').value = ''; $('#spellingInput').disabled = false;
-  const options = $('#quizOptions'); options.replaceChildren();
-  if (!spelling) {
-    const others = shuffle(allWords.filter(item => item.id !== word.id && item.zh !== word.zh)).slice(0, 3);
-    shuffle([word, ...others]).forEach(item => {
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'quiz-option'; button.textContent = item.zh;
-      button.addEventListener('click', () => {
-        if (currentQuestion.answered) return; currentQuestion.answered = true;
-        options.querySelectorAll('button').forEach(choice => { choice.disabled = true; if (choice.textContent === word.zh) choice.classList.add('correct'); });
-        if (item.id !== word.id) button.classList.add('incorrect');
-        showQuizFeedback(item.id === word.id, word);
-      }); options.append(button);
-    });
-  }
 }
 function showQuizFeedback(correct, word) {
   const feedback = $('#quizFeedback'); feedback.classList.toggle('wrong', !correct);
-  feedback.textContent = correct ? '答對了！點「換一題」繼續練習。' : `再記一下：${word.en} = ${word.zh}。點「換一題」繼續。`;
+  feedback.textContent = correct ? `答對了！${word.en} = ${word.zh}。` : `再記一下：${word.en} = ${word.zh}。`;
 }
 $('#spellingForm').addEventListener('submit', event => {
   event.preventDefault(); if (!currentQuestion || currentQuestion.answered) return;
@@ -238,5 +228,17 @@ $('#randomSentences').addEventListener('click', () => {
   const next = (sentencePages[currentScene.id] + 1 + Math.floor(Math.random() * (count - 1))) % count;
   setSentencePage(next);
 });
-document.querySelectorAll('.topnav a').forEach(link => link.addEventListener('click', () => { document.querySelectorAll('.topnav a').forEach(item => item.classList.remove('active')); link.classList.add('active'); }));
-renderLesson(); renderReview(); renderProgress(); newQuestion();
+function showView() {
+  const view = ['learn', 'review', 'quiz'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'learn';
+  for (const section of document.querySelectorAll('main > section')) section.hidden = section.id !== view;
+  document.querySelectorAll('.topnav a').forEach(link => {
+    const active = link.getAttribute('href') === `#${view}`;
+    link.classList.toggle('active', active);
+    if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+  });
+  window.scrollTo(0, 0);
+  setTimeout(() => window.scrollTo(0, 0), 0);
+}
+window.addEventListener('hashchange', showView);
+window.addEventListener('load', showView);
+renderLesson(); renderReview(); renderProgress(); showView();
