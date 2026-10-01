@@ -38,6 +38,16 @@ let currentScene = scenes[0];
 let currentQuestion = null;
 let recognition = null;
 let toastTimer;
+let speechVoices = [];
+
+function refreshSpeechVoices() {
+  speechVoices = window.speechSynthesis?.getVoices() || [];
+}
+
+if ('speechSynthesis' in window) {
+  refreshSpeechVoices();
+  window.speechSynthesis.addEventListener('voiceschanged', refreshSpeechVoices);
+}
 
 function readSentencePages() {
   let previous = {};
@@ -74,14 +84,31 @@ function showToast(message) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 2800);
 }
 function speak(text) {
-  if (!('speechSynthesis' in window)) { showToast('這個瀏覽器不支援語音播放。'); return; }
-  window.speechSynthesis.cancel();
+  if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) {
+    showToast('此 Android 瀏覽器不支援語音播放。請使用最新版 Chrome，並啟用系統的文字轉語音輸出。');
+    return;
+  }
+  const synthesis = window.speechSynthesis;
+  refreshSpeechVoices();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'en-US'; utterance.rate = 0.85;
-  const voices = window.speechSynthesis.getVoices();
-  const voice = voices.find(item => item.lang === 'en-US') || voices.find(item => item.lang.startsWith('en'));
+  const voice = speechVoices.find(item => item.lang.toLowerCase() === 'en-us') || speechVoices.find(item => item.lang.toLowerCase().startsWith('en-'));
   if (voice) utterance.voice = voice;
-  window.speechSynthesis.speak(utterance);
+  utterance.onerror = (event) => {
+    if (event.error === 'canceled' || event.error === 'interrupted') return;
+    if (event.error === 'language-unavailable' || event.error === 'voice-unavailable') {
+      showToast('找不到英文系統語音。請在 Android「文字轉語音輸出」下載英文語音後重試。');
+      return;
+    }
+    showToast('無法啟動語音播放。請確認 Android 的文字轉語音輸出已啟用，然後重試。');
+  };
+  try {
+    synthesis.cancel();
+    if (synthesis.paused) synthesis.resume();
+    synthesis.speak(utterance);
+  } catch {
+    showToast('無法啟動語音播放。請確認 Android 的文字轉語音輸出已啟用，然後重試。');
+  }
 }
 function toggleUnknown(id) {
   if (unknown.has(id)) { unknown.delete(id); showToast('已從生字本移除'); }
