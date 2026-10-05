@@ -290,7 +290,7 @@ const fixedLessonBuilders = {
     ] }
   ]
 };
-function addFixedCurriculum(scene, target = 1000) {
+function addFixedCurriculum(scene, target = 2000) {
   const groupsNeeded = Math.floor((target - exampleSets[scene].length) / 5);
   const builders = fixedLessonBuilders[scene];
   for (let group = 0; group < groupsNeeded; group++) {
