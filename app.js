@@ -16,6 +16,27 @@ const scenes = [
   }
 ];
 
+// Fixed curriculum metadata. Add a record here whenever a new five-sentence group is added.
+const lessonPageDetails = {
+  airport: [
+    ['入門', '報到'], ['入門', '座位'], ['入門', '行李托運'], ['中階', '行李托運'], ['中階', '安檢'],
+    ['中階', '安檢'], ['中階', '航班資訊'], ['進階', '轉機與航廈'], ['進階', '登機'], ['進階', '最後登機']
+  ],
+  restaurant: [
+    ['入門', '入座候位'], ['入門', '座位需求'], ['入門', '菜單'], ['中階', '餐點介紹'], ['中階', '點餐'],
+    ['中階', '客製餐點'], ['中階', '飲食需求'], ['進階', '過敏與烹調'], ['進階', '飲料'], ['進階', '續杯']
+  ],
+  work: [
+    ['入門', '日常交流'], ['入門', '遠端工作'], ['入門', '安排會議'], ['中階', '線上會議'], ['中階', '討論'],
+    ['中階', '決策'], ['中階', '專案進度'], ['進階', '時程與截止日'], ['進階', '檔案與郵件'], ['進階', '客戶跟進']
+  ]
+};
+const generatedLessonTopics = {
+  airport: { 0: '報到', 1: '座位', 2: '行李托運', 4: '安檢', 8: '登機' },
+  restaurant: { 0: '入座候位', 2: '菜單', 4: '點餐', 6: '飲食需求', 8: '飲料' },
+  work: { 0: '日常交流', 1: '遠端工作', 2: '安排會議', 3: '線上會議', 6: '專案進度' }
+};
+
 const $ = (selector) => document.querySelector(selector);
 const legacyWords = [
   ['boarding-pass', 'boarding pass', '登機證'], ['passport', 'passport', '護照'], ['gate', 'gate', '登機門'], ['luggage', 'luggage', '行李'],
@@ -23,18 +44,17 @@ const legacyWords = [
   ['meeting', 'meeting', '會議'], ['deadline', 'deadline', '截止日期'], ['update', 'update', '更新；進度'], ['feedback', 'feedback', '回饋']
 ].map(([id, en, zh]) => ({ id, en, zh, type: 'word' }));
 const allWords = [...Object.values(lessonWords).flat(2), ...legacyWords];
-try {
-  const previousVocabulary = JSON.parse(localStorage.getItem('speak-easy-vocabulary-v1') || '{}');
-  if (Array.isArray(previousVocabulary.history)) allWords.push(...previousVocabulary.history.filter(word => word && typeof word.id === 'string' && typeof word.en === 'string'));
-} catch { /* previous online words are optional */ }
 const wordById = new Map(allWords.map(word => [word.id, word]));
 const savedKey = 'speak-easy-unknown-v1';
 const pageKey = 'speak-easy-sentence-page-v1';
+const filterKey = 'speak-easy-curriculum-filter-v1';
+const learningStateKey = 'speak-easy-learning-state-v1';
 const pageSize = 5;
 let unknown = readUnknown();
 let sentencePages = readSentencePages();
-scenes.forEach(scene => { scene.words = lessonWords[scene.id][sentencePages[scene.id]]; });
-let currentScene = scenes[0];
+let savedLearningState = readLearningState();
+let currentScene = scenes.find(scene => scene.id === savedLearningState.sceneId) || scenes[0];
+let curriculumFilter = readCurriculumFilter();
 let currentQuestion = null;
 let recognition = null;
 let toastTimer;
@@ -54,25 +74,81 @@ function readSentencePages() {
   try { previous = JSON.parse(localStorage.getItem(pageKey) || '{}') || {}; } catch { /* start at the first group */ }
   const pages = Object.fromEntries(scenes.map(scene => {
     const count = Math.ceil(scene.sentences.length / pageSize);
-    const last = Number.isInteger(previous[scene.id]) ? previous[scene.id] : -1;
-    return [scene.id, (last + 1) % count];
+    const saved = Number.isInteger(previous[scene.id]) ? previous[scene.id] : 0;
+    return [scene.id, Math.min(Math.max(saved, 0), count - 1)];
   }));
   try { localStorage.setItem(pageKey, JSON.stringify(pages)); } catch { /* pages still work for this visit */ }
   return pages;
 }
-function setSentencePage(page) {
-  const count = Math.ceil(currentScene.sentences.length / pageSize);
-  sentencePages[currentScene.id] = (page + count) % count;
+function readCurriculumFilter() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(filterKey) || '{}') || {};
+    return { difficulty: ['all', '入門', '中階', '進階'].includes(stored.difficulty) ? stored.difficulty : 'all', topic: typeof stored.topic === 'string' ? stored.topic : 'all' };
+  } catch { return { difficulty: 'all', topic: 'all' }; }
+}
+function saveCurriculumFilter() {
+  try { localStorage.setItem(filterKey, JSON.stringify(curriculumFilter)); } catch { /* filters still work for this visit */ }
+}
+function readLearningState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(learningStateKey) || '{}') || {};
+    return {
+      sceneId: scenes.some(scene => scene.id === saved.sceneId) ? saved.sceneId : null,
+      view: ['learn', 'review', 'quiz'].includes(saved.view) ? saved.view : 'learn'
+    };
+  } catch { return { sceneId: null, view: 'learn' }; }
+}
+function saveLearningState(view = savedLearningState.view) {
+  savedLearningState = { sceneId: currentScene.id, view };
+  try { localStorage.setItem(learningStateKey, JSON.stringify(savedLearningState)); } catch { /* the lesson remains usable */ }
+}
+function getPageDetail(scene, page) {
+  const details = lessonPageDetails[scene.id] || [];
+  if (details[page]) {
+    const [difficulty, topic] = details[page];
+    return { difficulty, topic };
+  }
+  const topics = [...new Set(details.map(([, topic]) => topic))];
+  const totalPages = Math.ceil(scene.sentences.length / pageSize);
+  const difficulty = page < totalPages / 3 ? '入門' : page < totalPages * 2 / 3 ? '中階' : '進階';
+  const template = scene.sentences[page * pageSize]?.lessonTemplate;
+  const topic = generatedLessonTopics[scene.id]?.[template] || topics[page % topics.length] || '綜合練習';
+  return { difficulty, topic };
+}
+function getLessonWords(scene, page) {
+  const template = scene.sentences[page * pageSize]?.lessonTemplate;
+  return lessonWords[scene.id][Number.isInteger(template) ? template : page] || lessonWords[scene.id][0];
+}
+function getFilteredPages(scene) {
+  return Array.from({ length: Math.ceil(scene.sentences.length / pageSize) }, (_, page) => page)
+    .filter(page => {
+      const detail = getPageDetail(scene, page);
+      return (curriculumFilter.difficulty === 'all' || detail.difficulty === curriculumFilter.difficulty) &&
+        (curriculumFilter.topic === 'all' || detail.topic === curriculumFilter.topic);
+    });
+}
+function ensureCurrentPage(scene) {
+  const pages = getFilteredPages(scene);
+  if (pages.length && !pages.includes(sentencePages[scene.id])) sentencePages[scene.id] = pages[0];
+  return pages;
+}
+function currentPagePosition(scene = currentScene) {
+  const pages = ensureCurrentPage(scene);
+  return pages.indexOf(sentencePages[scene.id]);
+}
+function setSentencePage(position) {
+  const pages = ensureCurrentPage(currentScene);
+  if (!pages.length) return;
+  sentencePages[currentScene.id] = pages[(position + pages.length) % pages.length];
   try { localStorage.setItem(pageKey, JSON.stringify(sentencePages)); } catch { /* paging still works for this visit */ }
-  currentScene.words = lessonWords[currentScene.id][sentencePages[currentScene.id]];
+  currentScene.words = getLessonWords(currentScene, sentencePages[currentScene.id]);
   stopRecognition(); renderWords(); renderSentences(); newQuestion();
-  document.dispatchEvent(new Event('lessonchange'));
 }
 
 function readUnknown() {
   try {
     const data = JSON.parse(localStorage.getItem(savedKey) || '[]');
-    return new Set(Array.isArray(data) ? data.filter(id => typeof id === 'string') : []);
+    return new Set(Array.isArray(data) ? data.filter(id => typeof id === 'string' && wordById.has(id)) : []);
   } catch { return new Set(); }
 }
 function persistUnknown() {
@@ -110,14 +186,61 @@ function speak(text) {
     showToast('無法啟動語音播放。請確認 Android 的文字轉語音輸出已啟用，然後重試。');
   }
 }
-function toggleUnknown(id) {
-  if (unknown.has(id)) { unknown.delete(id); showToast('已從生字本移除'); }
-  else { unknown.add(id); showToast('已加入生字本'); }
+function unknownWordKey(word) { return normalize(word.en); }
+function isWordUnknown(word) {
+  const key = unknownWordKey(word);
+  return [...unknown].some(id => {
+    const saved = wordById.get(id);
+    return saved && unknownWordKey(saved) === key;
+  });
+}
+function uniqueUnknownWords() {
+  const seen = new Set();
+  return [...unknown].flatMap(id => {
+    const word = wordById.get(id);
+    const key = word && unknownWordKey(word);
+    if (!word || seen.has(key)) return [];
+    seen.add(key);
+    return [{ id, word }];
+  });
+}
+function removeUnknownWord(word, notify = true) {
+  const key = unknownWordKey(word);
+  const removed = [...unknown].filter(id => {
+    const saved = wordById.get(id);
+    return saved && unknownWordKey(saved) === key;
+  });
+  if (!removed.length) return false;
+  removed.forEach(id => unknown.delete(id));
   persistUnknown(); renderWords(); renderReview(); renderProgress();
+  if (notify) showToast('已從生字本移除');
+  return true;
+}
+function toggleUnknown(word) {
+  if (isWordUnknown(word)) { removeUnknownWord(word); return; }
+  unknown.add(word.id);
+  persistUnknown(); renderWords(); renderReview(); renderProgress();
+  showToast('已加入生字本');
 }
 function renderProgress() {
-  $('#unknownCount').textContent = unknown.size;
-  $('#progressSummary').textContent = unknown.size ? `已記錄 ${unknown.size} 個生字` : '今天就從一句開始';
+  const count = uniqueUnknownWords().length;
+  $('#unknownCount').textContent = count;
+  $('#progressSummary').textContent = count ? `已記錄 ${count} 個生字` : '今天就從一句開始';
+}
+function renderFilters() {
+  const difficulty = $('#difficultyFilter');
+  const topic = $('#topicFilter');
+  difficulty.value = curriculumFilter.difficulty;
+  const topics = [...new Set(Array.from({ length: Math.ceil(currentScene.sentences.length / pageSize) }, (_, page) => getPageDetail(currentScene, page))
+    .filter(detail => curriculumFilter.difficulty === 'all' || detail.difficulty === curriculumFilter.difficulty)
+    .map(detail => detail.topic))];
+  if (curriculumFilter.topic !== 'all' && !topics.includes(curriculumFilter.topic)) curriculumFilter.topic = 'all';
+  topic.replaceChildren(new Option('全部主題', 'all'), ...topics.map(value => new Option(value, value)));
+  topic.value = curriculumFilter.topic;
+  const pages = ensureCurrentPage(currentScene);
+  const labels = [curriculumFilter.difficulty === 'all' ? '全部難度' : curriculumFilter.difficulty, curriculumFilter.topic === 'all' ? '全部主題' : curriculumFilter.topic];
+  $('#filterSummary').textContent = `${labels.join('・')}：${pages.length} 組教材`;
+  $('#vocabularyStatus').textContent = pages.length ? `固定教材・${getPageDetail(currentScene, sentencePages[currentScene.id]).difficulty}・${getPageDetail(currentScene, sentencePages[currentScene.id]).topic}` : '沒有符合條件的教材';
 }
 function renderTabs() {
   const box = $('#sceneTabs'); box.replaceChildren();
@@ -125,7 +248,7 @@ function renderTabs() {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'scene-tab';
     button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', String(scene.id === currentScene.id));
     button.innerHTML = `<span class="tab-icon" aria-hidden="true">${scene.icon}</span><span>${scene.tab}</span>`;
-    button.addEventListener('click', () => { stopRecognition(); currentScene = scene; renderLesson(); });
+    button.addEventListener('click', () => { stopRecognition(); currentScene = scene; saveLearningState(); renderLesson(); });
     box.append(button);
   });
 }
@@ -139,15 +262,17 @@ function renderWords() {
     info.append(name, meaning);
     const actions = document.createElement('div'); actions.className = 'vocab-actions';
     const play = document.createElement('button'); play.type = 'button'; play.className = 'icon-button'; play.textContent = '♫'; play.title = `播放 ${word.en}`; play.setAttribute('aria-label', `播放 ${word.en} 發音`); play.addEventListener('click', () => speak(word.en));
-    const save = document.createElement('button'); save.type = 'button'; save.className = `icon-button save-button${unknown.has(word.id) ? ' saved' : ''}`; save.textContent = unknown.has(word.id) ? '✓' : '+'; save.title = unknown.has(word.id) ? '取消生字紀錄' : '記錄不會的字'; save.setAttribute('aria-label', `${unknown.has(word.id) ? '取消紀錄' : '記錄生字'} ${word.en}`); save.addEventListener('click', () => toggleUnknown(word.id));
+    const saved = isWordUnknown(word);
+    const save = document.createElement('button'); save.type = 'button'; save.className = `icon-button save-button${saved ? ' saved' : ''}`; save.textContent = saved ? '✓' : '+'; save.title = saved ? '取消生字紀錄' : '記錄不會的字'; save.setAttribute('aria-label', `${saved ? '取消紀錄' : '記錄生字'} ${word.en}`); save.addEventListener('click', () => toggleUnknown(word));
     actions.append(play, save); card.append(info, actions); box.append(card);
   });
 }
 function renderSentences() {
   const box = $('#sentenceList'); box.replaceChildren();
+  const pages = ensureCurrentPage(currentScene);
   const page = sentencePages[currentScene.id];
-  const total = Math.ceil(currentScene.sentences.length / pageSize);
-  $('#sentencePageStatus').textContent = `第 ${page + 1} / ${total} 組・共 ${currentScene.sentences.length} 句`;
+  const position = pages.indexOf(page);
+  $('#sentencePageStatus').textContent = `第 ${position + 1} / ${pages.length} 組・符合條件共 ${pages.length * pageSize} 句`;
   currentScene.sentences.slice(page * pageSize, (page + 1) * pageSize).forEach(sentence => {
     const card = document.createElement('div'); card.className = 'sentence-card';
     const top = document.createElement('div'); top.className = 'sentence-top';
@@ -165,25 +290,26 @@ function renderSentences() {
   });
 }
 function renderLesson() {
+  ensureCurrentPage(currentScene);
+  currentScene.words = getLessonWords(currentScene, sentencePages[currentScene.id]);
   renderTabs(); $('#sceneCategory').textContent = currentScene.category; $('#sceneTitle').textContent = currentScene.title;
   $('#sceneDescription').textContent = currentScene.description; $('#sceneIcon').textContent = currentScene.icon;
-  renderWords(); renderSentences(); newQuestion();
-  document.dispatchEvent(new Event('lessonchange'));
+  renderFilters(); renderWords(); renderSentences(); newQuestion();
 }
 function renderReview() {
   const box = $('#reviewList'); box.replaceChildren();
-  if (!unknown.size) {
+  const words = uniqueUnknownWords();
+  if (!words.length) {
     const empty = document.createElement('div'); empty.className = 'empty-state'; empty.innerHTML = '<strong>生字本還是空的 ✦</strong>看到不熟的字，按下單字旁的 ＋ 就能收進來。'; box.append(empty); return;
   }
-  [...unknown].forEach(id => {
-    const word = wordById.get(id); if (!word) return;
+  words.forEach(({ word }) => {
     const card = document.createElement('div'); card.className = 'review-card';
     const info = document.createElement('div'); const name = document.createElement('strong'); name.textContent = word.en;
     const type = document.createElement('small'); type.textContent = word.type;
     const meaning = document.createElement('p'); meaning.textContent = word.zh; info.append(name, type, meaning);
     const actions = document.createElement('div'); actions.className = 'review-actions';
     const play = document.createElement('button'); play.type = 'button'; play.className = 'icon-button'; play.textContent = '♫'; play.setAttribute('aria-label', `播放 ${word.en} 發音`); play.addEventListener('click', () => speak(word.en));
-    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'review-remove'; remove.textContent = '我會了 ✓'; remove.setAttribute('aria-label', `已學會 ${word.en}，取消紀錄`); remove.addEventListener('click', () => toggleUnknown(id));
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'review-remove'; remove.textContent = '我會了 ✓'; remove.setAttribute('aria-label', `已學會 ${word.en}，取消紀錄`); remove.addEventListener('click', () => removeUnknownWord(word));
     actions.append(play, remove); card.append(info, actions); box.append(card);
   });
 }
@@ -240,7 +366,8 @@ function newQuestion() {
 }
 function showQuizFeedback(correct, word) {
   const feedback = $('#quizFeedback'); feedback.classList.toggle('wrong', !correct);
-  feedback.textContent = correct ? `答對了！${word.en} = ${word.zh}。` : `再記一下：${word.en} = ${word.zh}。`;
+  const removed = correct && removeUnknownWord(word, false);
+  feedback.textContent = correct ? `答對了！${word.en} = ${word.zh}。${removed ? '已從生字本移除。' : ''}` : `再記一下：${word.en} = ${word.zh}。`;
 }
 $('#spellingForm').addEventListener('submit', event => {
   event.preventDefault(); if (!currentQuestion || currentQuestion.answered) return;
@@ -248,21 +375,35 @@ $('#spellingForm').addEventListener('submit', event => {
   currentQuestion.answered = true; $('#spellingInput').disabled = true; showQuizFeedback(correct, currentQuestion.word);
 });
 $('#newQuestion').addEventListener('click', newQuestion);
-$('#previousSentences').addEventListener('click', () => setSentencePage(sentencePages[currentScene.id] - 1));
-$('#nextSentences').addEventListener('click', () => setSentencePage(sentencePages[currentScene.id] + 1));
+$('#difficultyFilter').addEventListener('change', event => {
+  curriculumFilter.difficulty = event.target.value;
+  curriculumFilter.topic = 'all';
+  saveCurriculumFilter();
+  renderLesson();
+});
+$('#topicFilter').addEventListener('change', event => {
+  curriculumFilter.topic = event.target.value;
+  saveCurriculumFilter();
+  renderLesson();
+});
+$('#previousSentences').addEventListener('click', () => setSentencePage(currentPagePosition() - 1));
+$('#nextSentences').addEventListener('click', () => setSentencePage(currentPagePosition() + 1));
 $('#randomSentences').addEventListener('click', () => {
-  const count = Math.ceil(currentScene.sentences.length / pageSize);
-  const next = (sentencePages[currentScene.id] + 1 + Math.floor(Math.random() * (count - 1))) % count;
+  const count = ensureCurrentPage(currentScene).length;
+  if (count < 2) return;
+  const next = (currentPagePosition() + 1 + Math.floor(Math.random() * (count - 1))) % count;
   setSentencePage(next);
 });
 function showView() {
-  const view = ['learn', 'review', 'quiz'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'learn';
+  const hashView = location.hash.slice(1);
+  const view = ['learn', 'review', 'quiz'].includes(hashView) ? hashView : savedLearningState.view;
   for (const section of document.querySelectorAll('main > section')) section.hidden = section.id !== view;
   document.querySelectorAll('.topnav a').forEach(link => {
     const active = link.getAttribute('href') === `#${view}`;
     link.classList.toggle('active', active);
     if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
+  saveLearningState(view);
   window.scrollTo(0, 0);
   setTimeout(() => window.scrollTo(0, 0), 0);
 }
