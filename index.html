@@ -14,7 +14,6 @@
   <script src="examples.js" defer></script>
   <script src="lesson-words.js" defer></script>
   <script src="app.js" defer></script>
-  <script src="online-vocabulary.js" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -30,15 +29,16 @@
 
     <main>
       <section id="learn" class="learning-section" aria-labelledby="learningTitle">
-        <div class="section-heading"><div><p class="eyebrow">01 / LEARN IN CONTEXT</p><h2 id="learningTitle">選一個情境，開始練習</h2><p>每組 5 句範例，先認識其中 6 個實用單字，再聽句子跟著說。</p></div><span class="heading-decor" aria-hidden="true">✳</span></div>
+        <div class="section-heading"><div><p class="eyebrow">01 / LEARN IN CONTEXT</p><h2 id="learningTitle">選一個情境，開始練習</h2><p>所有教材都已預先校對；依難度與主題挑選，每組練習 5 句。</p></div><span class="heading-decor" aria-hidden="true">✳</span></div>
         <div id="sceneTabs" class="scene-tabs" role="tablist" aria-label="選擇英文情境"></div>
+        <div class="lesson-filters" aria-label="篩選教材"><label for="difficultyFilter">難度<select id="difficultyFilter"><option value="all">全部難度</option><option value="入門">入門</option><option value="中階">中階</option><option value="進階">進階</option></select></label><label for="topicFilter">主題<select id="topicFilter"><option value="all">全部主題</option></select></label><span id="filterSummary" role="status"></span></div>
         <div class="lesson-grid">
           <section class="lesson-main" aria-labelledby="sceneTitle">
             <div class="scene-intro"><div><span id="sceneCategory" class="scene-category"></span><h3 id="sceneTitle"></h3><p id="sceneDescription"></p></div><span id="sceneIcon" class="scene-icon" aria-hidden="true"></span></div>
             <div class="subheading"><span class="step-number">01</span><div><h4>先認識核心單字</h4><p>這 6 個單字都會出現在下面的 5 句裡；不熟的字可以收進生字本。</p></div></div>
-            <div class="vocabulary-toolbar"><span id="vocabularyStatus" role="status">本組核心單字</span><div><button id="rotateVocabulary" type="button">換一組句子</button><button id="refreshVocabulary" type="button">網路更新 ↗</button></div></div>
+            <p id="vocabularyStatus" class="vocabulary-status" role="status">固定教材</p>
             <div id="vocabularyList" class="vocabulary-list"></div>
-            <div class="subheading sentence-heading"><span class="step-number">02</span><div><h4>聽一句，跟著說一句</h4><p>每個情境有 50 句範例；每次練習 5 句，先聽英文再翻開中文。</p></div></div>
+            <div class="subheading sentence-heading"><span class="step-number">02</span><div><h4>聽一句，跟著說一句</h4><p>每次練習 5 句，先聽英文再翻開中文；可隨時切換符合篩選條件的教材。</p></div></div>
             <div id="sentenceList" class="sentence-list"></div>
             <div class="sentence-pager" aria-label="切換範例句組"><button id="previousSentences" type="button">← 上一組</button><span id="sentencePageStatus" role="status"></span><button id="randomSentences" type="button">隨機練習 ✦</button><button id="nextSentences" type="button">下一組 →</button></div>
           </section>
