@@ -158,3 +158,145 @@ for (const [scene, lines] of Object.entries(exampleSets)) {
     return { en: line.slice(0, divider), zh: line.slice(divider + 1) };
   });
 }
+
+// The fixed curriculum is expanded to 1,000 sentences per scene.  The source
+// stays compact, while every generated sentence and translation is deterministic
+// and available without a network request.
+const fixedLessonVariants = {
+  names: ['Alex', 'Jamie', 'Taylor', 'Morgan', 'Casey', 'Jordan', 'Riley', 'Avery', 'Cameron', 'Parker'],
+  cities: [['Taipei', '台北'], ['Tokyo', '東京'], ['Singapore', '新加坡'], ['Seoul', '首爾'], ['Bangkok', '曼谷'], ['Sydney', '雪梨'], ['London', '倫敦'], ['Vancouver', '溫哥華'], ['Paris', '巴黎'], ['New York', '紐約']],
+  dishes: [['chicken rice', '雞肉飯'], ['tomato pasta', '番茄義大利麵'], ['grilled fish', '烤魚'], ['beef noodles', '牛肉麵'], ['vegetable curry', '蔬菜咖哩'], ['mushroom soup', '蘑菇湯'], ['seafood salad', '海鮮沙拉'], ['cheese sandwich', '起司三明治'], ['pumpkin risotto', '南瓜燉飯'], ['fruit yogurt', '水果優格']],
+  projects: [['website launch', '網站上線'], ['sales report', '銷售報告'], ['client proposal', '客戶提案'], ['training plan', '培訓計畫'], ['product update', '產品更新'], ['budget review', '預算審查'], ['design draft', '設計草稿'], ['team schedule', '團隊時程'], ['research summary', '研究摘要'], ['monthly report', '月報']]
+};
+function fixedLessonValues(index) {
+  const pick = (items, offset = 0) => items[(index + offset) % items.length];
+  const hour = 7 + (index % 12);
+  return {
+    name: pick(fixedLessonVariants.names), city: pick(fixedLessonVariants.cities, 2)[0], cityZh: pick(fixedLessonVariants.cities, 2)[1],
+    dish: pick(fixedLessonVariants.dishes, 4)[0], dishZh: pick(fixedLessonVariants.dishes, 4)[1], project: pick(fixedLessonVariants.projects, 6)[0], projectZh: pick(fixedLessonVariants.projects, 6)[1], flight: `${120 + index * 7}`, gate: String.fromCharCode(65 + (index % 6)) + (1 + (index % 35)),
+    time: `${hour}:00`, hour, day: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][index % 5], number: 2 + (index % 5)
+  };
+}
+const fixedLessonBuilders = {
+  airport: [
+    { template: 0, build: v => [
+      [`The check-in counter for flight ${v.flight} opens at ${v.time}.`, `航班 ${v.flight} 的報到櫃檯在 ${v.time} 開放。`],
+      [`${v.name}, please show your passport and boarding pass.`, `${v.name}，請出示您的護照和登機證。`],
+      [`Your flight to ${v.city} leaves from gate ${v.gate}.`, `您前往 ${v.cityZh} 的航班從 ${v.gate} 登機門出發。`],
+      ['The check-in counter can print a new boarding pass.', '報到櫃檯可以列印新的登機證。'],
+      ['Please keep your passport with you until you reach the gate.', '抵達登機門前，請隨身保管護照。']
+    ] },
+    { template: 1, build: v => [
+      [`Your booking reference is ${String.fromCharCode(65 + v.number)}${v.flight}.`, `您的訂位代號是 ${String.fromCharCode(65 + v.number)}${v.flight}。`],
+      [`Would you prefer a window seat or an aisle seat?`, '您偏好靠窗座位還是靠走道座位？'],
+      ['You can check in online with the booking reference.', '您可以使用訂位代號在線上辦理報到。'],
+      [`Online check-in will close at ${v.time}.`, `線上報到會在 ${v.time} 關閉。`],
+      ['The window seat is available, but the aisle seat is taken.', '靠窗座位還有空位，但靠走道座位已有人使用。']
+    ] },
+    { template: 2, build: v => [
+      [`You may check ${v.number} bags for this flight.`, `這班航班您可以托運 ${v.number} 件行李。`],
+      [`Can we keep our ${v.number} seats together after the change?`, `更換後我們還能保留 ${v.number} 個連在一起的座位嗎？`],
+      ['This bag is over the weight limit.', '這件行李超過重量限制。'],
+      ['The excess baggage fee can be paid at the counter.', '超重行李費可以在櫃檯支付。'],
+      ['Please change the bags before the final check.', '最後檢查前，請更換這些行李。']
+    ] },
+    { template: 4, build: v => [
+      ['Please place your liquids in a clear bag for security.', '請把液體放進透明袋，以便通過安檢。'],
+      ['Take your laptop out of the bag before the scan.', '掃描前請從包包裡拿出筆記型電腦。'],
+      [`The security line is busiest around ${v.time}.`, `安檢隊伍在 ${v.time} 左右最擁擠。`],
+      ['Empty your pockets and put your jacket in the tray.', '請清空口袋，並把外套放進托盤。'],
+      ['The security officer will tell you when to walk through.', '安檢人員會告訴您何時可以通過。']
+    ] },
+    { template: 8, build: v => [
+      [`Boarding for flight ${v.flight} will begin at ${v.time}.`, `航班 ${v.flight} 在 ${v.time} 開始登機。`],
+      ['Please have your boarding pass ready at the gate.', '請在登機門準備好登機證。'],
+      [`Your boarding group is ${v.number}; priority boarding goes first.`, `您的登機組別是第 ${v.number} 組；優先登機會先開始。`],
+      ['Families with small children may board before the final call.', '有幼兒的家庭可在最後登機通知前先登機。'],
+      ['The gate agent announced that boarding is ready.', '登機門服務人員宣布可以開始登機。']
+    ] }
+  ],
+  restaurant: [
+    { template: 0, build: v => [
+      [`We have a reservation for ${v.number} under ${v.name}.`, `我們以 ${v.name} 的名字訂了 ${v.number} 人座位。`],
+      ['Could we have a table near the window, please?', '我們可以坐靠窗的桌位嗎？'],
+      ['The menu and the bill are both available in English.', '菜單和帳單都有英文版。'],
+      ['Could we have a table when our reservation is ready?', '我們的訂位準備好後，可以有一張桌位嗎？'],
+      ['Would you recommend anything from the menu?', '您會推薦菜單上的什麼餐點嗎？']
+    ] },
+    { template: 2, build: v => [
+      [`Today's special is ${v.dish}.`, `今天的特餐是${v.dishZh}。`],
+      ['The English menu has pictures of every popular dish.', '英文菜單有每一道熱門餐點的照片。'],
+      ['The table is taken, so one person is waiting outside.', '桌位已有人使用，所以有一個人正在外面等候。'],
+      ['Could you show the English menu with pictures to that person?', '可以把附有照片的英文菜單給那位客人看嗎？'],
+      ["Today's special is popular with every waiting person.", '今天的特餐很受每一位等候客人的歡迎。']
+    ] },
+    { template: 4, build: v => [
+      [`I am ready to order the ${v.dish}.`, `我準備好要點${v.dishZh}。`],
+      ['My friend would like the same dish without onions.', '我朋友想點同一道餐，但不要洋蔥。'],
+      ['Could you make the sauce less spicy?', '醬汁可以做得不那麼辣嗎？'],
+      ['Please put the sauce on the side of the chicken salad.', '請把雞肉沙拉的醬汁另外放。'],
+      ['We are ready to order when you have a moment.', '您方便時，我們就可以點餐。']
+    ] },
+    { template: 6, build: v => [
+      ['Do you have any vegetarian options today?', '今天有素食選項嗎？'],
+      ['My guest is allergic to peanuts and shellfish.', '我的同伴對花生和貝類過敏。'],
+      ['Is the broth made without dairy?', '這個高湯是不含乳製品做的嗎？'],
+      ['Could you tell the kitchen about this allergy?', '可以告知廚房這個過敏狀況嗎？'],
+      ['The vegetarian dish is suitable for vegans.', '這道素食餐點適合純素者。']
+    ] },
+    { template: 8, build: v => [
+      ['Could we have sparkling water and iced coffee?', '我們可以要氣泡水和冰咖啡嗎？'],
+      ['Please bring a pitcher of water for the table.', '請拿一壺水到這桌。'],
+      ['Is the refill for tea and juice free?', '茶和果汁可以免費續杯嗎？'],
+      ['I would like my coffee without sugar.', '我的咖啡不要加糖。'],
+      ['Could I have a straw for this nonalcoholic drink?', '這杯無酒精飲料可以給我一根吸管嗎？']
+    ] }
+  ],
+  work: [
+    { template: 0, build: v => [
+      [`Could we have a quick chat before the ${v.day} meeting?`, `我們可以在週${v.day === 'Monday' ? '一' : v.day === 'Tuesday' ? '二' : v.day === 'Wednesday' ? '三' : v.day === 'Thursday' ? '四' : '五'}會議前簡短聊一下嗎？`],
+      [`I would appreciate an update on the ${v.project}.`, `我很感謝你提供${v.projectZh}的進度更新。`],
+      ['Thank you for your helpful feedback this weekend.', '謝謝你這週末提供的實用回饋。'],
+      ['The meeting starts with a quick update from everyone.', '會議一開始會由每個人簡短更新進度。'],
+      ['I appreciate your feedback before we finish the chat.', '在結束討論前，我很感謝你的回饋。']
+    ] },
+    { template: 1, build: v => [
+      [`I am working from home on ${v.day}.`, `我週${v.day === 'Monday' ? '一' : v.day === 'Tuesday' ? '二' : v.day === 'Wednesday' ? '三' : v.day === 'Thursday' ? '四' : '五'}在家工作。`],
+      ['Could you show me how the new system works?', '你可以示範新系統怎麼操作嗎？'],
+      ['I am still getting used to this process.', '我還在適應這個流程。'],
+      [`Please contact ${v.name} if you need help getting started.`, `如果你需要開始上手的協助，請聯絡 ${v.name}。`],
+      ['The system is easy to use after a short demonstration.', '簡短示範後，這個系統很容易使用。']
+    ] },
+    { template: 2, build: v => [
+      [`Could we schedule the ${v.project} meeting for ${v.day}?`, `我們可以把${v.projectZh}會議排在週${v.day === 'Monday' ? '一' : v.day === 'Tuesday' ? '二' : v.day === 'Wednesday' ? '三' : v.day === 'Thursday' ? '四' : '五'}嗎？`],
+      [`Does ${v.hour} o'clock work for everyone on the calendar invite?`, `行事曆邀請上的 ${v.time} 對大家都方便嗎？`],
+      ['I would like to move the meeting to Thursday and update the agenda.', '我想把會議改到星期四並更新議程。'],
+      ['Please send a calendar invite with the new schedule.', '請寄出附有新時間的行事曆邀請。'],
+      ['The agenda includes time for questions at the end.', '議程最後包含提問時間。']
+    ] },
+    { template: 3, build: v => [
+      ['Can everyone hear me before I share my screen?', '在我分享畫面前，大家都聽得到我嗎？'],
+      ['Please speak slowly if I missed part of the update.', '如果我漏聽一部分進度，請說慢一點。'],
+      ['I will share my screen and repeat the main point.', '我會分享畫面並重複重點。'],
+      ['Could you hear the last part of the presentation?', '你有聽到簡報的最後一段嗎？'],
+      ['The update is easier to follow when the screen is shared.', '分享畫面後，進度內容更容易理解。']
+    ] },
+    { template: 6, build: v => [
+      [`The deadline for the ${v.project} is ${v.day}.`, `${v.projectZh}的截止日期是週${v.day === 'Monday' ? '一' : v.day === 'Tuesday' ? '二' : v.day === 'Wednesday' ? '三' : v.day === 'Thursday' ? '四' : '五'}。`],
+      ['Please review the draft document before the deadline.', '請在截止日期前審閱草稿文件。'],
+      ['I will send a revised version after I finish this work.', '完成這項工作後，我會寄出修訂版本。'],
+      ['The final document needs one more review.', '最終文件還需要再審閱一次。'],
+      ['We can finish the draft on time with clear feedback.', '有明確回饋後，我們可以準時完成草稿。']
+    ] }
+  ]
+};
+function addFixedCurriculum(scene, target = 1000) {
+  const groupsNeeded = Math.floor((target - exampleSets[scene].length) / 5);
+  const builders = fixedLessonBuilders[scene];
+  for (let group = 0; group < groupsNeeded; group++) {
+    const builder = builders[group % builders.length];
+    const values = fixedLessonValues(Math.floor(group / builders.length));
+    exampleSets[scene].push(...builder.build(values).map(([en, zh]) => ({ en, zh, lessonTemplate: builder.template })));
+  }
+}
+Object.keys(fixedLessonBuilders).forEach(scene => addFixedCurriculum(scene));
