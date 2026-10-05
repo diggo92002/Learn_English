@@ -6,7 +6,7 @@
 
 - 每組顯示 5 句範例及從這 5 句挑出的 6 個核心單字。教材與翻譯皆為預先校對的固定內容，不會透過網路更新。
 - 可依「入門／中階／進階」及情境相關主題篩選教材；篩選條件與上次閱讀的句組會保存在本機瀏覽器。
-- 為兼顧手機效能與教材數量，新增教材由固定模板在載入時建立；頁面一次只建立並顯示目前的 5 句，不會把 6,000 句全部插入畫面。
+- 6,000 句中英例句完整儲存在 `curriculum-data.js`，可逐筆編輯；不會發出網路請求，也不會在載入時產生新教材。頁面一次只建立並顯示目前的 5 句。
 - 關閉後重新開啟時，會回到上次選擇的情境、教材篩選、句組與頁面（情境學習／我的生字／小測驗）。
 - 點單字的音符，或點英文句子，即可聽發音。
 - 每次顯示 5 句，可切換上一組、下一組或隨機練習。
@@ -21,4 +21,4 @@
 
 手機主畫面圖示使用 `apple-touch-icon.png`（iPhone）及 `icon-192.png`、`icon-512.png`（Android）。`manifest.webmanifest` 定義主畫面名稱與獨立視窗模式；`mobile-icon.svg` 是 PNG 圖示的向量原稿。上傳 GitHub Pages 時，請把這些檔案與 `index.html`、CSS、JavaScript 一起放在同一層。手機從 HTTPS 網址開啟後，可用瀏覽器的「加入主畫面」。目前沒有離線快取，從主畫面啟動仍需要連線載入頁面。
 
-上傳時請包含 `index.html`、`styles.css`、`app.js`、`examples.js`、`lesson-words.js`、`icon.svg`、三張 PNG 圖示及 `manifest.webmanifest`。`README.md` 和 `mobile-icon.svg` 可一起上傳作為說明與圖示原稿。
+上傳時請包含 `index.html`、`styles.css`、`curriculum-data.js`、`examples.js`、`app.js`、`lesson-words.js`、`icon.svg`、三張 PNG 圖示及 `manifest.webmanifest`。`README.md` 和 `mobile-icon.svg` 可一起上傳作為說明與圖示原稿。
